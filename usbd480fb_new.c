@@ -44,7 +44,7 @@
 #include <linux/fb.h>
 #include <linux/workqueue.h>
 
-#define uint32_t unsigned long
+#define uint32_t                           unsigned long
 
 
 #define USBD480_INTEPDATASIZE              16
@@ -128,7 +128,9 @@ static int usbd480_get_device_details(struct usbd480 *dev)
                              64,
                              1000);
     if (result)
+    {
         dev_dbg(&dev->udev->dev, "result = %d\n", result);
+    }
 
     dev->width  = (unsigned char) buffer[20] | ((unsigned char) buffer[21] << 8);
     dev->height = (unsigned char) buffer[22] | ((unsigned char) buffer[23] << 8);
@@ -154,8 +156,9 @@ static int usbd480_set_brightness(struct usbd480 *dev, unsigned int brightness)
                              0,
                              1000);
     if (result)
+    {
         dev_dbg(&dev->udev->dev, "result = %d\n", result);
-
+    }
     return 0;
 }
 
@@ -175,16 +178,17 @@ static int usbd480_set_address(struct usbd480 *dev, unsigned int addr)
                              0,
                              1000);
     if (result)
+    {
         dev_dbg(&dev->udev->dev, "result = %d\n", result);
-
+    }
     return 0;
 }
 
 static int usbd480_set_frame_start_address(struct usbd480 *dev, unsigned int addr)
 {
     // TODO: return value handling
- 
-   int result;
+
+    int result;
 
     result = usb_control_msg(dev->udev,
                              usb_sndctrlpipe(dev->udev, 0),
@@ -196,8 +200,9 @@ static int usbd480_set_frame_start_address(struct usbd480 *dev, unsigned int add
                              0,
                              1000);
     if (result)
+    {
         dev_dbg(&dev->udev->dev, "result = %d\n", result);
-
+    }
     return 0;
 }
 
@@ -314,39 +319,39 @@ static void usbd480fb_work(struct work_struct *work)
     usbd480_set_address(d, writeaddr);
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-/* 
+/*
  * Synopsis
- * int usb_bulk_msg 
+ * int usb_bulk_msg
  *     (
- *       struct usb_device * usb_dev, 
- *       unsigned int pipe, 
- *       void * data, 
- *       int len, 
- *       int * actual_length, 
+ *       struct usb_device * usb_dev,
+ *       unsigned int pipe,
+ *       void * data,
+ *       int len,
+ *       int * actual_length,
  *       int timeout
  *     );
  * Arguments
  * usb_dev
  * pointer to the usb device to send the message to
- * 
+ *
  * pipe
  * endpoint "pipe" to send the message to
- * 
+ *
  * data
  * pointer to the data to send
- * 
+ *
  * len
  * length in bytes of the data to send
- * 
+ *
  * actual_length
  * pointer to a location to put the actual length transferred in bytes
- * 
+ *
  * timeout
  * time to wait for the message to complete before timing out
  * if 0 the wait is forever
  *
  * ans
- * If successful, it returns 0, othwise a negative error number. 
+ * If successful, it returns 0, othwise a negative error number.
  */
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
@@ -420,7 +425,8 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
 
 /*
         retval = usb_register_dev(interface, &usbd480_class);
-        if (retval) {
+        if (retval)
+        {
                 err("Not able to get a minor for this device.");
                 return -ENOMEM;
         }
@@ -428,22 +434,31 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
 
     retval = device_create_file(&interface->dev, &dev_attr_brightness);
     if (retval)
+    {
         goto error_dev_attr;
+    }
     retval = device_create_file(&interface->dev, &dev_attr_width);
     if (retval)
+    {
         goto error_dev_attr;
+    }
     retval = device_create_file(&interface->dev, &dev_attr_height);
     if (retval)
+    {
         goto error_dev_attr;
+    }
     retval = device_create_file(&interface->dev, &dev_attr_name);
     if (retval)
+    {
         goto error_dev_attr;
+    }
 
     dev_info(&interface->dev, "USBD480 attached\n");
-    //printk(KERN_INFO "usbd480fb: USBD480 connected\n");
 
     usbd480_get_device_details(dev);
-    //dev->vmemsize = dev->width*dev->height*2;
+    /*
+     * dev->vmemsize = dev->width*dev->height*2;
+     */
     dev->vmemsize = dev->width * dev->height * 2 * 2;
     dev->vmem     = NULL;
 
@@ -459,7 +474,7 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
 
     while (size > 0)
     {
-        SetPageReserved(virt_to_page((void*) addr));
+        SetPageReserved(virt_to_page((void *) addr));
         addr += PAGE_SIZE;
         size -= PAGE_SIZE;
     }
@@ -476,8 +491,8 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
 
 #ifdef __BIG_ENDIAN
     /* danilo patch */
-    info->flags =  FBINFO_FOREIGN_ENDIAN | FBINFO_FLAG_DEFAULT;
-#endif 
+    info->flags = FBINFO_FOREIGN_ENDIAN | FBINFO_FLAG_DEFAULT;
+#endif
 
     info->screen_base = (char __iomem *) dev->vmem;
     info->screen_size = dev->vmemsize;
@@ -505,10 +520,10 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
     info->var.bits_per_pixel = 16;
 /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     printk("usbd480: x=%d,y=%d\n", dev->width, dev->height);
-/*
- * myhere
- * Tested with display resolutions 480x272, 640x480, 240x320, 800x256
- */
+    /*
+     * myhere
+     * Tested with display resolutions 480x272, 640x480, 240x320, 800x256
+     */
     info->var.red.offset   = 11;
     info->var.red.length   = 5;
     info->var.green.offset = 5;
@@ -579,7 +594,9 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
     fb_dealloc_cmap(&info->cmap);
  error_fballoccmap:
     if (info->pseudo_palette)
+    {
         kfree(info->pseudo_palette);
+    }
  error_fbpseudopal:
     framebuffer_release(info);
  error_fballoc:
@@ -587,7 +604,7 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
     addr = (unsigned long) dev->vmem;
     while (size > 0)
     {
-        ClearPageReserved(virt_to_page((void*) addr));
+        ClearPageReserved(virt_to_page((void *) addr));
         addr += PAGE_SIZE;
         size -= PAGE_SIZE;
     }
@@ -601,8 +618,9 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
  error_dev:
     usb_set_intfdata(interface, NULL);
     if (dev)
+    {
         kfree(dev);
-
+    }
     printk(KERN_INFO "usbd480fb: error probe\n");
     return retval;
 }
@@ -636,7 +654,7 @@ static void usbd480_disconnect(struct usb_interface *interface)
         addr = (unsigned long) dev->vmem;
         while (size > 0)
         {
-            ClearPageReserved(virt_to_page((void*) addr));
+            ClearPageReserved(virt_to_page((void *) addr));
             addr += PAGE_SIZE;
             size -= PAGE_SIZE;
         }
@@ -663,7 +681,9 @@ static int __init usbd480_init(void)
 
     retval = usb_register(&usbd480_driver);
     if (retval)
+    {
         err("usb_register failed. Error number %d", retval);
+    }
     return retval;
 }
 
