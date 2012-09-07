@@ -1,3 +1,15 @@
+
+#include <linux/kernel.h>
+#include <linux/errno.h>
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/usb.h>
+#include <linux/poll.h>
+#include <linux/string.h>
+#include <linux/mm.h>
+#include <linux/fb.h>
+#include <linux/workqueue.h>
+
 /*
  * USBD480 USB display framebuffer driver
  * working on PowerBook-G4 with fbiterm
@@ -15,39 +27,52 @@
  *
  * Tested with display resolutions 480x272
  * kernel 2.6.26
+ *
+ *
+ * ideas, todo:
+ * ============
+ *
+ *     error handling
+ *     backlight support - separate driver?
+ *     double buffering
+ *     alternatively instead of continuosly updating
+ *     wait for an update command from application?
+ *     performance optimisation
+ *     suspend/resume
  */
 
-#define FIXENDIAN
-#define lcdX                 480
-#define lcdY                 272
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+#define uint32_t             unsigned long
+#define boolean_t            unsigned char
+#define True                 1
+#define False                0
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+#define FIXENDIAN            yes
+#define SCREEN_WIDTH         480
+#define SCREEN_HEIGHT        272
 #define lcd_refresh_delay    10
-
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 /*
- * TODO:
- * - error handling
- * - backlight support - separate driver?
- * - double buffering
- * - alternatively instead of continuosly updating
- * - wait for an update command from application?
- * - performance optimisation
- * - suspend/resume
+ * The screen size is set up for the default
+ * 8x8 character size of fbcon
  */
-
-#include <linux/kernel.h>
-#include <linux/errno.h>
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/usb.h>
-#include <linux/poll.h>
-#include <linux/string.h>
-#include <linux/mm.h>
-#include <linux/fb.h>
-#include <linux/workqueue.h>
-
-#define uint32_t                           unsigned long
+#define BYTES_PER_PIXEL      2
+#define BITS_PER_PIXEL       (BYTES_PER_PIXEL * 8)
+#define ROWLEN               (SCREEN_WIDTH * BYTES_PER_PIXEL)
 
 
-#define USBD480_INTEPDATASIZE              16
+#define RED_SHIFT            16
+#define GREEN_SHIFT          8
+#define BLUE_SHIFT           0
+
+#define AREASIZE             (SCREEN_WIDTH * SCREEN_HEIGHT * BYTES_PER_PIXEL)
+
+boolean_t is_hwscroll = False;
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+
+#define USBD480_INTEPDATASIZE              16  /* 16 bit interface */
 
 #define USBD480_VID                        0x16C0
 #define USBD480_PID                        0x08A6
@@ -67,18 +92,68 @@
 #define USBD480_REFRESH_DELAY              500 / 100   /* about xx fps, less in practice */
 #define USBD480_REFRESH_JIFFIES            ((USBD480_REFRESH_DELAY * HZ) / 1000)
 
-#define USBD480_DEVICE(vid, pid)                     \
-    .match_flags = USB_DEVICE_ID_MATCH_DEVICE |      \
-                   USB_DEVICE_ID_MATCH_INT_CLASS |   \
-                   USB_DEVICE_ID_MATCH_INT_PROTOCOL, \
-    .idVendor           = (vid),                     \
-    .idProduct          = (pid),                     \
-    .bInterfaceClass    = USB_CLASS_VENDOR_SPEC,     \
-    .bInterfaceProtocol = 0x00
+
+/*
+ * Here we define the default structs fb_fix_screeninfo and fb_var_screeninfo
+ * if we don't use modedb. If we do use modedb see xxxfb_init how to use it
+ * to get a fb_var_screeninfo. Otherwise define a default var as well.
+ */
+static struct fb_fix_screeninfo xxxfb_fix =    //__devinitdata =
+{
+    .id   = "usbd480fb",                       /* my */
+    .type = FB_TYPE_PACKED_PIXELS,
+//        .visual     = FB_VISUAL_PSEUDOCOLOR, /* used */
+    .visual      = FB_VISUAL_TRUECOLOR,      /* suggested */
+    .xpanstep    =                              1,
+    .ypanstep    =                              1,
+    .ywrapstep   =                              1,
+    .line_length = SCREEN_WIDTH * BYTES_PER_PIXEL,
+    .accel       = FB_ACCEL_NONE,
+};
+
+static struct fb_var_screeninfo xxxfb_var __devinitdata = /* new */
+{
+    .bits_per_pixel = BITS_PER_PIXEL,
+
+    .red          = { RED_SHIFT,    8, 0 },
+    .green        = { GREEN_SHIFT,  8, 0 },
+    .blue         = { BLUE_SHIFT,   8, 0 },
+    .transp       = { 0,            0, 0 },
+    .xres         = SCREEN_WIDTH,
+    .yres         = SCREEN_HEIGHT,
+    .xres_virtual = SCREEN_WIDTH,
+    .yres_virtual = SCREEN_HEIGHT,
+    .nonstd       =              0,
+};
+
+struct xxxfb_drv                 /* new */
+{
+    struct fb_info * info;       /* FB driver info record */
+
+//    struct spi_device* spi;      /* Char device structure */
+    u16            * scr;
+    u32            pseudo_palette[32];
+};
+
+/*
+ * Driver
+ */
+/*new*/ struct xxxfb_drv* main_dev;   /* Allocated dynamically in init function */
+
+
+
 
 static struct usb_device_id id_table [] =
 {
-    { USBD480_DEVICE(USBD480_VID, USBD480_PID) },
+    {
+        .match_flags = USB_DEVICE_ID_MATCH_DEVICE |
+                       USB_DEVICE_ID_MATCH_INT_CLASS |
+                       USB_DEVICE_ID_MATCH_INT_PROTOCOL,
+        .idVendor           = USBD480_VID,
+        .idProduct          = USBD480_PID,
+        .bInterfaceClass    = USB_CLASS_VENDOR_SPEC,
+        .bInterfaceProtocol = 0x00
+    },
     { },
 };
 MODULE_DEVICE_TABLE(usb, id_table);
@@ -258,6 +333,269 @@ static DEVICE_ATTR(name, S_IRUGO, show_name, NULL);
 
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+int xxxfb_init(void);
+
+/*
+ *      xxxfb_open - Optional function. Called when the framebuffer is
+ *                   first accessed.
+ *      info: frame buffer structure that represents a single frame buffer
+ *      user: tell us if the userland (value=1) or the console is accessing
+ *             the framebuffer.
+ *
+ *      This function is the first function called in the framebuffer api.
+ *      Usually you don't need to provide this function. The case where it
+ *      is used is to change from a text mode hardware state to a graphics
+ *      mode state.
+ *
+ *      Returns negative errno on error, or zero on success.
+ */
+static int xxxfb_open(struct fb_info *info, int user)
+{
+    return 0;
+}
+
+/*
+ *      xxxfb_release - Optional function. 
+ *                      Called when the framebuffer device is closed.
+ *      info: frame buffer structure that represents a single frame buffer
+ *      user: tell us if the userland (value=1) or the console is accessing
+ *             the framebuffer.
+ *
+ *      Thus function is called when we close /dev/fb or the framebuffer
+ *      console system is released. Usually you don't need this function.
+ *      The case where it is usually used is to go from a graphics state
+ *      to a text mode state.
+ *
+ *      Returns negative errno on error, or zero on success.
+ */
+static int xxxfb_release(struct fb_info *info, int user)
+{
+    printk("usbd480 release\n");
+    return 0;
+}
+
+static int xxxfb_ioctl(struct fb_info *info, u_int cmd, u_long arg)
+{
+    printk("usbd480 ioctl\n");
+    return 0;
+}
+
+static void lcd_initScreen()
+{
+}
+
+static void lcd_clear()
+{
+}
+
+static inline unsigned int chan_to_field
+(
+    unsigned int chan,
+    const struct fb_bitfield *bf
+)
+{
+    chan  &= 0xffff;
+    chan >>= 16 - bf->length;
+    return chan << bf->offset;
+}
+
+static int xxxfb_setcolreg
+(
+    unsigned int regno,
+    unsigned int red,
+    unsigned int green,
+    unsigned int blue,
+    unsigned int transp,
+    struct fb_info *info
+)
+{
+    unsigned int val;
+    unsigned int color;
+    u32          *pal;
+    int          ret = 1;
+
+    if (info->var.grayscale)
+    {
+        color = (19595 * red + 38470 * green + 7471 * blue) >> 16;
+        red   = color;
+        green = color;
+        blue  = color;
+    }
+    switch (info->fix.visual)
+    {
+    case FB_VISUAL_TRUECOLOR:
+        if (regno < 16)
+        {
+            pal = info->pseudo_palette;
+
+            val  = chan_to_field(red, &info->var.red);
+            val |= chan_to_field(green, &info->var.green);
+            val |= chan_to_field(blue, &info->var.blue);
+
+            pal[regno] = val;
+            ret        = 0;
+        }
+        break;
+    default:
+        break;
+    }
+    return ret;
+}
+
+
+static void xxxfb_delay(int n)
+{
+    mdelay(n);
+}
+static void update_Screen
+(
+    struct fb_info* info,
+    unsigned int xPos,
+    unsigned int yPos,
+    unsigned int w,
+    unsigned int h
+)
+{
+    int x, y;
+    u8  *vmem = info->screen_base;
+    u8  *src;
+    u16 dst;
+
+    if (xPos > SCREEN_WIDTH || yPos > SCREEN_HEIGHT || (xPos + w) > SCREEN_WIDTH || (yPos + h) > SCREEN_HEIGHT)
+    {
+        printk(KERN_WARNING "updateNokiaScreen: Invalid coordinate. (%d,%d)\n", xPos, yPos);
+        return;
+    }
+}
+
+static ssize_t xxxfb_read
+(
+    struct fb_info *info,
+    char *buf,
+    size_t count,
+    loff_t * ppos
+)
+{
+    unsigned long p = *ppos;
+    unsigned int  fb_mem_len;
+    char          *base_addr;
+
+
+    printk("usbd480: fb_read\n");
+    return 0;
+
+    fb_mem_len = SCREEN_WIDTH * SCREEN_HEIGHT * BYTES_PER_PIXEL;
+    if (p >= fb_mem_len)
+    {
+        return 0;
+    }
+    if (count >= fb_mem_len)
+    {
+        count = fb_mem_len;
+    }
+    if (count + p > fb_mem_len)
+    {
+        count = fb_mem_len - p;
+    }
+
+    if (count > 0)
+    {
+        base_addr = info->screen_base;
+        count    -= copy_to_user(buf, base_addr + p, count);
+        if (count == 0)
+        {
+            return -EFAULT;
+        }
+        *ppos += count;
+    }
+    return count;
+}
+
+static ssize_t xxxfb_write
+(
+    struct fb_info *info,
+    const char *buf,
+    size_t count,
+    loff_t * ppos
+)
+{
+    struct xxxfb_drv *par = info->par;
+    unsigned long    p    = *ppos;
+    unsigned int     fb_mem_len;
+    int              err;
+    char             *base_addr;
+
+
+    printk("usbd480: fb_write\n"); 
+    return 0;
+
+    fb_mem_len = SCREEN_WIDTH * SCREEN_HEIGHT * BYTES_PER_PIXEL;
+
+    if (p > fb_mem_len)
+    {
+        return -ENOSPC;
+    }
+    if (count >= fb_mem_len)
+    {
+        count = fb_mem_len;
+    }
+    err = 0;
+
+    if (count + p > fb_mem_len)
+    {
+        count = fb_mem_len - p;
+        err   = -ENOSPC;
+    }
+    if (count > 0)
+        if (p > fb_mem_len)
+        {
+            return -ENOSPC;
+        }
+    if (count >= fb_mem_len)
+    {
+        count = fb_mem_len;
+    }
+    err = 0;
+
+    if (count + p > fb_mem_len)
+    {
+        count = fb_mem_len - p;
+        err   = -ENOSPC;
+    }
+    if (count > 0)
+        if (p > fb_mem_len)
+        {
+            return -ENOSPC;
+        }
+    if (count >= fb_mem_len)
+    {
+        count = fb_mem_len;
+    }
+    err = 0;
+
+    if (count + p > fb_mem_len)
+    {
+        count = fb_mem_len - p;
+        err   = -ENOSPC;
+    }
+    if (count > 0)
+    {
+        base_addr = info->screen_base;
+        count    -= copy_from_user(base_addr + p, buf, count);
+        *ppos    += count;
+        err       = -EFAULT;
+    }
+    if (count > 0)
+    {
+        // Always updates whole lines.
+        update_Screen(info, 0, p / ROWLEN, SCREEN_WIDTH, (count + ROWLEN - 1) / ROWLEN);
+        return count;
+    }
+    return err;
+}
+
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 typedef union
 {
     uint32_t word;
@@ -395,16 +733,22 @@ static void usbd480fb_work(struct work_struct *work)
 
 static struct fb_ops usbd480fb_ops =
 {
-    .owner        = THIS_MODULE,
-    .fb_read      = fb_sys_read,
-    .fb_write     = fb_sys_write,
-    .fb_fillrect  = sys_fillrect,
-    .fb_copyarea  = sys_copyarea,
-    .fb_imageblit = sys_imageblit,
-
-// maybe    .fb_setcolreg = xilinx_fb_setcolreg,
-// maybe   .fb_blank     = xilinx_fb_blank,
+    .owner              = THIS_MODULE,
+//    .fb_read      = fb_sys_read,
+//    .fb_write     = fb_sys_write,
+/* new */ .fb_read      = xxxfb_read,
+/* new */ .fb_write     = xxxfb_write,
+    .fb_fillrect        = sys_fillrect,
+    .fb_copyarea        = sys_copyarea,
+    .fb_imageblit       = sys_imageblit,
+    .fb_open            = xxxfb_open,    /* my */
+    .fb_release         = xxxfb_release, /* my */
+    .fb_ioctl           = xxxfb_ioctl,   /* my */
+/* new */ .fb_setcolreg = xxxfb_setcolreg,
+// maybe .fb_blank     = fb_blank,
 };
+
+
 
 static int usbd480_probe(struct usb_interface *interface, const struct usb_device_id *id)
 {
@@ -414,6 +758,8 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
     signed long       size;
     unsigned long     addr;
     struct fb_info    *info;
+
+printk("usbd480 probe\n");
 
     dev = kzalloc(sizeof(struct usbd480), GFP_KERNEL);
     if (dev == NULL)
@@ -425,15 +771,6 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
 
     dev->udev = usb_get_dev(udev);
     usb_set_intfdata(interface, dev);
-
-/*
-        retval = usb_register_dev(interface, &usbd480_class);
-        if (retval)
-        {
-                err("Not able to get a minor for this device.");
-                return -ENOMEM;
-        }
- */
 
     retval = device_create_file(&interface->dev, &dev_attr_brightness);
     if (retval)
@@ -462,7 +799,8 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
     /*
      * dev->vmemsize = dev->width*dev->height*2;
      */
-    dev->vmemsize = dev->width * dev->height * 2 * 2;
+    dev->vmemsize = (dev->width * dev->height * 2) * 2;
+             /* x2, 'cause of double buffer,needed by endian_fix */
     dev->vmem     = NULL;
 
     if (!(dev->vmem = (void *) __get_free_pages(GFP_KERNEL, USBD480_VIDEOMEMORDER)))
@@ -492,19 +830,59 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
         goto error_fballoc;
     }
 
+/* new */ lcd_initScreen();
+/* new */ lcd_clear();
+
+
+
 #ifdef __BIG_ENDIAN
     /* danilo patch */
     info->flags = FBINFO_FOREIGN_ENDIAN | FBINFO_FLAG_DEFAULT;
 #endif
 
+
+/* . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . */
+    /*
+     * Here we set the screen_base to the virtual memory address
+     * for the framebuffer. Usually we obtain the resource address
+     * from the bus layer and then translate it to virtual memory
+     * space via ioremap. Consult ioport.h.
+     */
+    //info->screen_base = framebuffer_virtual_memory;
+    /* framebuffer_virtual_memory */
     info->screen_base = (char __iomem *) dev->vmem;
     info->screen_size = dev->vmemsize;
-    info->fbops       = &usbd480fb_ops;
 
-    info->fix.type        = FB_TYPE_PACKED_PIXELS;
-    info->fix.visual      = FB_VISUAL_TRUECOLOR;
+    info->var = xxxfb_var;
+    info->fix = xxxfb_fix;
+    /*
+     * this will be the only time xxxfb_fix will be
+     * used, so mark it as __devinitdata
+     */
+/* . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . */
+
+
+    info->fbops = &usbd480fb_ops;
+
+    info->fix.type   = FB_TYPE_PACKED_PIXELS;
+    info->fix.visual = FB_VISUAL_TRUECOLOR;
+    /*
+     * FB_VISUAL_PSEUDOCOLOR
+     * FB_VISUAL_DIRECTCOLOR
+     */
+
+    if (is_hwscroll == True)
+    {
+        printk(KERN_WARNING "usbd480 hw scroll mode\n");
+        info->flags |= (FBINFO_HWACCEL_COPYAREA | FBINFO_HWACCEL_FILLRECT);
+    }
+    else
+    {
+        printk(KERN_WARNING "usbd480 sw scroll mode\n");
+    }
+
     info->fix.xpanstep    = 0;
-    info->fix.ypanstep    = 0;     /*1*/
+    info->fix.ypanstep    = 0;
     info->fix.ywrapstep   = 0;
     info->fix.line_length = dev->width * 16 / 8;
     info->fix.accel       = FB_ACCEL_NONE;
@@ -514,18 +892,18 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
 
     //info->var.xres =      dev->width;
     //info->var.yres =      dev->height;
-    info->var.xres = lcdX;
-    info->var.yres = lcdY;
+    info->var.xres = SCREEN_WIDTH;
+    info->var.yres = SCREEN_HEIGHT;
     //info->var.xres_virtual =  dev->width;
-    //info->var.yres_virtual =  dev->height; /*8738*/
-    info->var.xres_virtual   = lcdX;
-    info->var.yres_virtual   = lcdY;          /*8738*/
+    //info->var.yres_virtual =  dev->height; 
+    info->var.xres_virtual   = SCREEN_WIDTH;
+    info->var.yres_virtual   = SCREEN_HEIGHT;
     info->var.bits_per_pixel = 16;
 /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     printk("usbd480: x=%d,y=%d\n", dev->width, dev->height);
     /*
      * myhere
-     * Tested with display resolutions 480x272, 640x480, 240x320, 800x256
+     * Tested with display resolutions 480x272
      */
     info->var.red.offset   = 11;
     info->var.red.length   = 5;
@@ -540,10 +918,14 @@ static int usbd480_probe(struct usb_interface *interface, const struct usb_devic
     info->var.lower_margin = 0;
     info->var.vmode        = FB_VMODE_NONINTERLACED;
 
-    info->pseudo_palette = NULL;
-    info->par            = NULL;
-    info->flags          = FBINFO_FLAG_DEFAULT; /*FBINFO_HWACCEL_YPAN */
+    info->par   = NULL;
+    info->flags = FBINFO_FLAG_DEFAULT;          /*FBINFO_HWACCEL_YPAN */
 
+    //info->pseudo_palette = NULL;
+    //info->pseudo_palette = pseudo_palette;
+    /*
+     * The pseudopalette is an 16-member array
+     */
     info->pseudo_palette = kzalloc(sizeof(u32) * 16, GFP_KERNEL);
     if (info->pseudo_palette == NULL)
     {
