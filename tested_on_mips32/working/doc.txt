@@ -1,0 +1,38 @@
+Graphics in console
+Posted on May 29, 2011 by unni
+Linux uses framebuffer to show graphics in console. 
+It is possible to see pictures or even video in console using framebuffer. 
+In ubuntu the packages such as fbi, fbcat, mplayer etc can be used to see pictures, 
+take screen shot and view video respectively. 
+You need to be in any of the console by pressing CTRL+ALT+F1 to use these commands.
+
+Fbi package to view pictures
+
+The fbi package provides the framebuffer image viewer.
+
+sudo apt-get install fbi
+sudo fbi /path/to/image
+
+
+Mplayer to play video in console
+
+Mplayer uses the fbdev video output driver to display video using framebuffer.
+
+sudo mplayer -vo fbdev video.file
+To increase the size of the video, the -vf option can be used
+
+sudo mplayer -vo fbdev -vf scale=1024:768 video.file
+Fbcat package to take screen shot in console
+
+The fbgrab binary provided by fbcat package can be used to take screen shot in console.
+
+sudo apt-get install fbcat
+After installing it, go to console 2 by pressing CTRL + ALT + F2 and execute
+
+sudo fbgrab -c 1 screen.png
+use
+
+sudo fbi screen.png
+to view it. Enjoy playing with console graphics 
+
+
