@@ -3,7 +3,7 @@
       Description:   Framebuffer internationalized terminal emulator
 
 
-he framebuffer console (fbcon), as its name implies, is a text console running on top of the framebuffer device. It has the functionality of any standard text console driver, such as the VGA console, with the added features that can be attributed to the graphical nature of the framebuffer.
+the framebuffer console (fbcon), as its name implies, is a text console running on top of the framebuffer device. It has the functionality of any standard text console driver, such as the VGA console, with the added features that can be attributed to the graphical nature of the framebuffer.
 
 What are the features of fbcon? The framebuffer console supports high resolutions, varying font types, display rotation, primitive multihead, etc. Theoretically, multi-colored fonts, blending, aliasing, and any feature made available by the underlying graphics card are also possible.
 
