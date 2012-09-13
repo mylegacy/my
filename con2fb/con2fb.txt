@@ -1,0 +1,1 @@
+con2fb /dev/fb2 /dev/tty5
