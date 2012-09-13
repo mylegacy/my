@@ -1,0 +1,59 @@
+/*
+ * quick test suggests
+ * ===================
+ *
+ * Henri
+ * -------------------------------------------------------------------
+ * test1  USBD480_VMALLOC      + USBD480_FULLSCREEN_UPDATE  -> work
+ * test2  USBD480_VMALLOC      + USBD480_DEFIO              -> work
+ * test3  USBD480_GETFREEPAGES + USBD480_FULLSCREEN_UPDATE  -> work
+ * test4  USBD480_GETFREEPAGES + USBD480_DEFIO              -> NOT working
+ *
+ * legacy/x86-2.6.38
+ * -------------------------------------------------------------------
+ * test1  USBD480_VMALLOC      + USBD480_FULLSCREEN_UPDATE
+ *        fbi                     ??
+ *        fbcon                   ??
+ *        fbiterm                 ??
+ *        cat imgage.bin /dev/fb  ??
+ *        rmmod                   ??
+ *
+ * test3  USBD480_GETFREEPAGES + USBD480_DEFIO
+ *        fbi                     ??
+ *        fbcon                   ??
+ *        fbiterm                 ??
+ *        cat imgage.bin /dev/fb  ??
+ *        rmmod                   ??
+ *
+ * legacy/ppc-2.6.26
+ * -------------------------------------------------------------------
+ * test1  USBD480_VMALLOC      + USBD480_FULLSCREEN_UPDATE
+ *        fbi                     ??
+ *        fbcon                   ??
+ *        fbiterm                 ??
+ *        cat imgage.bin /dev/fb  ??
+ *        rmmod                   ??
+ *
+ * test3  USBD480_GETFREEPAGES + USBD480_DEFIO
+ *        fbi                     ??
+ *        fbcon                   ??
+ *        fbiterm                 ??
+ *        cat imgage.bin /dev/fb  ??
+ *        rmmod                   ??
+ *
+ * legacy/mips-2.6.39
+ * -------------------------------------------------------------------
+ * test1  USBD480_VMALLOC      + USBD480_FULLSCREEN_UPDATE
+ *        fbi                     ??
+ *        fbcon                   ??
+ *        fbiterm                 ??
+ *        cat imgage.bin /dev/fb  ??
+ *        rmmod                   ??
+ *
+ * test3  USBD480_GETFREEPAGES + USBD480_DEFIO
+ *        fbi                     ??
+ *        fbcon                   ??
+ *        fbiterm                 ??
+ *        cat imgage.bin /dev/fb  ??
+ *        rmmod                   ??
+ */

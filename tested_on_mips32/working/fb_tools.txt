@@ -1,0 +1,3 @@
+fbi      open images in console
+fbgrab   take a snapshot 
+fbgs     open *.pdf documents in console

@@ -1,0 +1,31 @@
+ioctl VT_GETSTATE: Invalid argument (not a linux console?)
+
+using "DejaVu Sans Mono-16", pixelsize=16.67 file=/usr/share/fonts/dejavu/DejaVuSansMono.ttf
+ioctl VT_GETSTATE: Invalid argument (not a linux console?)
+
+
+The problem was that i was typing those commands in terminal 
+and they must be typed in /dev/tty1/2/3...
+using CTTRL + ALT +F1/F2/F3.
+
+
+
+
+
+don't ask why, but this is what I am looking to accomplish:
+
+through a logged in SSH terminal, I want to be able to open an image in the console (runlevel 3) of tty1 (tty1 can be logged in or not, doesn't matter)
+
+I have fbi installed for the console image rendering, but I am willing to change that if need be.
+
+Is this possible?
+
+running ubuntu server 10.04 no xwindow system.
+
+edit:
+
+I should mention that simply redirecting the output of fbi did not work for me
+
+fbi /pics/picture1 > /dev/tty1
+using "DejaVu Sans Mono-16", pixelsize=16.67 file=/usr/share/fonts/truetype/ttf-dejavu/DejaVuSansMono.ttf
+ioctl VT_GETSTATE: Invalid argument (not a linux console?)
