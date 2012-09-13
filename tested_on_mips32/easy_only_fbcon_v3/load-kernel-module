@@ -1,0 +1,9 @@
+modprobe fb_sys_fops
+modprobe syscopyarea
+modprobe sysfillrect
+modprobe sysimgblt
+insmod   easy3.ko
+
+
+
+
