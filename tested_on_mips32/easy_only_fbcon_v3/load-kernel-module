@@ -2,7 +2,7 @@ modprobe fb_sys_fops
 modprobe syscopyarea
 modprobe sysfillrect
 modprobe sysimgblt
-#insmod   usbd480fb_new.ko 
+insmod   easy3.ko
 
 
 
